@@ -3,12 +3,13 @@ package main
 import (
 	"context"
 	"fmt"
-	"google.golang.org/grpc/credentials/insecure"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/v2fly/v2ray-core/v4/app/stats/command"
+	"google.golang.org/grpc/credentials/insecure"
+
+	"github.com/v2fly/v2ray-core/v5/app/stats/command"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
@@ -47,8 +48,9 @@ func NewExporter(endpoint string, scrapeTimeout time.Duration) (*Exporter, error
 		"up":                           {txt: "Indicate scrape succeeded or not"},
 		"scrape_duration_seconds":      {txt: "Scrape duration in seconds"},
 		"uptime_seconds":               {txt: "V2Ray uptime in seconds"},
-		"traffic_uplink_bytes_total":   {txt: "Number of transmitted bytes", lbls: []string{"dimension", "target"}},
-		"traffic_downlink_bytes_total": {txt: "Number of received bytes", lbls: []string{"dimension", "target"}},
+		"traffic_uplink_bytes_total":   {txt: "Number of transmitted bytes", lbls: []string{"dimension", "target", "src"}},
+		"traffic_downlink_bytes_total": {txt: "Number of received bytes", lbls: []string{"dimension", "target", "src"}},
+		"connection_attempt_total":     {txt: "Number of connection attempts", lbls: []string{"dimension", "target", "src"}},
 	} {
 		e.metricDescriptions[k] = e.newMetricDescr(k, desc.txt, desc.lbls)
 	}
@@ -120,10 +122,17 @@ func (e *Exporter) scrapeV2RayMetrics(ctx context.Context, ch chan<- prometheus.
 		// example value: inbound>>>socks-proxy>>>traffic>>>uplink
 		p := strings.Split(s.GetName(), ">>>")
 		metric := p[2] + "_" + p[3] + "_bytes_total"
+		if !strings.EqualFold(p[2], "traffic") {
+			metric = p[2] + "_" + p[3] + "_total"
+		}
 		dimension := p[0]
 		target := p[1]
+		src := "all"
+		if len(p) >= 6 {
+			src = p[5]
+		}
 
-		e.registerConstMetricCounter(ch, metric, float64(s.GetValue()), dimension, target)
+		e.registerConstMetricCounter(ch, metric, float64(s.GetValue()), dimension, target, src)
 	}
 
 	return nil
